@@ -14,13 +14,14 @@ const rackRouter = require('./app/rack/router');
 const operatorRouter = require('./app/operator/router');
 const memberRouter = require('./app/member/router');
 const userRouter = require('./app/user/router');
+const adminRouter = require('./app/admin/router');
 const authRouter = require('./app/auth/router');
 const logRouter = require('./app/log-circulation/router');
 const circulationRouter = require('./app/circulation/router');
 const bookingRouter = require('./app/booking/router');
 
 //import middleware
-const {decodeToken} = require('./app/auth/middleware');
+const {decodeToken} = require('./middlewares/decodeToken');
 
 
 // view engine setup
@@ -42,6 +43,7 @@ app.use('/auth',authRouter);
 app.use('/api',bookRouter);
 app.use('/api',categoryRouter);
 app.use('/api',rackRouter);
+app.use('/api',adminRouter);
 app.use('/api',operatorRouter);
 app.use('/api',memberRouter);
 app.use('/api',userRouter);

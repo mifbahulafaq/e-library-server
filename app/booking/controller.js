@@ -1,6 +1,7 @@
 const Booking = require('./model');
 const DetailBooking = require('../detail-booking/model');
 const Book = require('../book/model');
+const Member = require('../member/model');
 const Circulation = require('../circulation/model');
 const DetailCirculation = require('../detail-circulation/model');
 const CirculationLog = require('../log-circulation/model');
@@ -17,11 +18,10 @@ async function store(req,res,next){
 		if(!policy.can('create','Booking')){
 			return res.json({
 				error: 1,
-				message: 'You have no access to add a circulation'
+				message: 'You have no access to add a booking'
 			})
 		}
-		
-		const {member,duration,books} = req.body;
+		const {duration,books} = req.body;
 		
 		//get total book 
 		let totalBooks = books.reduce((total,cv,ci,arr)=>{
@@ -64,7 +64,7 @@ async function store(req,res,next){
 		
 		let booking = new Booking({
 			date: new Date(),
-			member: member,
+			member: req.user._id,
 			duration: duration
 		});
 		await booking.save();
@@ -86,6 +86,7 @@ async function store(req,res,next){
 				fields: err.errors
 			})
 		}
+		return next(err)
 		
 	}
 }
@@ -108,15 +109,26 @@ async function index(req,res,next){
 	let filter = {};
 	
 	if(req.user.role === 'member'){
+		
+		const bookings = await Booking.find({member:req.user._id}).select('_id');
+		
 		filter= {
-			"booking.member": req.user._id
+			booking: {$in: bookings.map(e=>e._id)}
 		}
 	}
-	/*if(params.q){
-		filter = {
-			"member.name": {$regex: `${params.q}`, $options: 'i'},...filter
-		}
-	}*/
+	
+	if(req.user.role !== 'member' && req.query.q){
+		
+		const idMembers = await Member
+		.find({name:{$regex:`${req.query.q}`,$options: 'i'}})
+		.select('_id');
+		
+		idBookings = await Booking
+		.find({member:{$in: idMembers.map(data=>data._id)}})
+		.select('_id');
+		
+		filter.booking= {$in: idBookings.map(data=>data._id)}
+	}
 
     try{
 		
@@ -168,8 +180,12 @@ async function index(req,res,next){
 		.find(filter)
 		.skip(parseInt(skip))
 		.limit(parseInt(limit))
-		.populate('booking')
-		.populate('book');
+		.populate({
+			path: 'booking',
+			populate: {path:'member'}
+		})
+		.populate('book')
+		.sort('-updatedAt');
 		
 		const count = await DetailBooking.find(filter).countDocuments();
 		
@@ -257,13 +273,14 @@ async function process(req,res,next){
 		const circulationLog = new CirculationLog({
 			user: req.user._id,
 			detail_circulation: detailCirculation._id,
-			status:'borrowing'
+			status:'borrowed'
 		})
 		await circulationLog.save();
 		
 		return res.json(detailCirculation)
 
     }catch(err){
+		console.log(err)
         next(err);
     }
 
@@ -274,7 +291,6 @@ async function remove(req,res,next){
 	const detailBooking = await DetailBooking
 	.findOne({_id: req.params.detail_id}).
 	populate('booking');
-	console.log(detailBooking)
 	
 	const subjectDetail = subject('Booking',{...detailBooking,user_id: detailBooking.booking.member});
 	

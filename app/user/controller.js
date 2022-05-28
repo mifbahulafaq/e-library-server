@@ -1,39 +1,49 @@
 const User = require('./model');
+const Member = require('../member/model');
+const bcrypt = require('bcrypt');
 const policyFor = require('../policy');
 const { subject } = require('@casl/ability');
 const uppercase = require('../utils/uppercase');
+const path = require('path');
+const fs = require('fs')
+const config = require('../config');
 
 async function index(req,res,next){
 	
-	const {skip= 0, limit= 0} = req.query;
+	const {skip= 0, limit= 0, role} = req.query;
+	const policy = policyFor(req.user);
 	
-	try{
-		
-		const users = await User
-		.find({name: {$regex: `${req.query.q || ''}`, $options: 'i'}})
-		.skip(skip)
-		.limit(limit)
-		.select('-password');
-		
-		return res.json(users);
-		
-	}catch(err){
-		next(err);
+	if(!policy.can('readall',role?uppercase(role):'user')){
+		return res.json({
+			error: 1,
+			message: `you're not allowed to perform this action`
+		})
 	}
-}
-async function admin(req,res,next){
 	
-	const {skip= 0, limit= 0} = req.query;
+	let filter = {name: {$regex: `${req.query.q || ''}`, $options: 'i'}};
+	
+	if(req.query.role){
+		filter.role = req.query.role;
+	}
 	
 	try{
 		
 		const users = await User
-		.find({role: "admin", name: {$regex: `${req.query.q || ''}`, $options: 'i'}})
+		.find(filter)
 		.skip(skip)
 		.limit(limit)
-		.select('-password');
+		.select('-password -token')
+		.populate('member')
+		.populate('operator')
 		
-		return res.json(users);
+		const count = await User
+		.find(filter)
+		.countDocuments();
+		
+		return res.json({
+			data: users,
+			count
+		});
 		
 	}catch(err){
 		next(err);
@@ -42,8 +52,29 @@ async function admin(req,res,next){
 
 async function singleData(req,res,next){
 	
+	const policy = policyFor(req.user);
+	
 	try{
-		const user = await User.findOne(req.params.id);
+		
+		let user = await User.findOne({_id: req.params.id});
+		const role = uppercase(user.role);
+		
+		const subjectUser = subject(role,{...user, user_id: user._id})
+		
+		if(!policy.can('read',subjectUser)){
+
+			return res.json({
+				error: 1,
+				message: `You're not allowed to read this single data`
+			})
+		
+		}
+		
+		user = await User.findOne({_id: req.params.id})
+		.populate('member')
+		.populate('operator')
+		.select('-password -token -__v');
+		
 		return res.json(user);
 	}catch(err){
 		next(err)
@@ -78,8 +109,8 @@ async function updateEmail(req,res,next){
 			{email}, 
 		{new: true, runValidators: true, context: 'query'}
 		)
-		.select('-password -token');
-		
+		.select('-password -token -__v');
+				
 		return res.json(user);
 		
 	}catch(err){
@@ -104,7 +135,7 @@ async function updatePass(req,res,next){
 	
 	try{
 		
-		const {password} = req.body;
+		const {old_password, password} = req.body;
 		
 		let user = await User.findOne({_id: req.params.id});
 		const role = uppercase(user.role);
@@ -118,11 +149,19 @@ async function updatePass(req,res,next){
 			})
 		}
 		
-		user = await User
-		.findOneAndUpdate({_id: req.params.id}, {password}, {new: true, runValidators: true})
-		.select('-password -token -__v');
+		if(bcrypt.compareSync(old_password, user.password)){
+			
+			await User.updateOne({_id: req.params.id}, {password: password}, {new: true, runValidators: true});
+			return res.json({
+				err: 0,
+				message: 'Password changed'
+			})
+		}
 		
-		return res.json(user);
+		return res.json({
+			error: 1,
+			message: "Password not match"
+		})
 		
 	}catch(err){
 		
@@ -133,39 +172,7 @@ async function updatePass(req,res,next){
 				fields: err.errors
 			})
 		}
-		
-	}
-}
-
-async function store(req,res,next){
-	
-	try{
-		
-		
-		let policy = policyFor(req.user);
-		
-		/*if(!policy.can('create','Admin')){
-			return res.json({
-				error: 1,
-				message: 'You have no access to add a Admin'
-			})
-		}*/
-		
-		const payload = req.body;
-		const user = new User({...payload, role: 'admin'});
-		await user.save();
-		
-		return res.json(user);
-	}catch(err){
-		
-			console.log(err)
-		if(err && err.name == 'ValidationError'){ 
-			return res.json({
-				error: 1,
-				message: err.message,
-				fields: err.errors
-			})
-		}
+		return next(err);
 		
 	}
 }
@@ -184,15 +191,15 @@ async function remove(req,res,next){
 		if(!policy.can('delete',subjectUser)){
 			return res.json({
 				error:1,
-				message: `You're not allowed to perform this action`
+				message: `You cannot delete this data`
 			})
 		}
 		
 		user = await User.findOneAndDelete({_id: req.params.id}).select('-password -token');
+		const member = await Member.deleteOne({_id: req.params.id});
 		return res.json(user);
 		
 	}catch(err){
-		console.log(err)
 		next(err)
 	}
 
@@ -201,10 +208,8 @@ async function remove(req,res,next){
 
 module.exports = {
 	index,
-	store,
 	updateEmail,
 	updatePass,
 	singleData,
-	remove,
-	admin
+	remove
 }

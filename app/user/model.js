@@ -53,8 +53,9 @@ userSchema.path('email').validate(async function(value){
 		
 		//for update validator
 		if(this.model.countDocuments){
-		
-			const count = await this.model.countDocuments({email: value});
+			const { _id } = this.getFilter()
+			
+			const count = await this.model.countDocuments({email: value, _id:{$ne: _id}});
 			return !count;
 		
 		}
@@ -92,7 +93,7 @@ userSchema.pre(['save','findOneAndUpdate','updateOne'], function(next){
 		return next()
 	}catch(err){
 		console.log(err)
-		throw err
+		next(err)
 		
 	}
 	

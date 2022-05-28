@@ -2,15 +2,17 @@ const { AbilityBuilder, Ability } = require('@casl/ability');
 
 const policies = {
 	
-	admin(user, {can}){
+	admin(user, {can, cannot}){
 		can('manage','all');
+		cannot('create','Booking');
+		can('edit','Admin',{user_id: user._id});
 	},
-	operator(user, {can}){
-		
+	operator(user, {can, cannot}){
 		can('manage','Book');
 		can('manage','Category');
 		can('manage','Rack');
 		can('manage','Booking');
+		cannot('create','Booking');
 		can('read','Operator',{user_id: user._id});
 		can('edit','Operator',{user_id: user._id});
 		can('delete','Operator',{user_id: user._id});
@@ -22,11 +24,13 @@ const policies = {
 		can('logout','User',{user_id: user._id});
 		
 	},
-	member(user, {can}){
+	member(user, {can, cannot}){
 		
+		can('read','Book');
 		can('edit','Member',{user_id: user._id});
 		can('read','Loan');
 		can('read','Circulation');
+		can('singleRead','Circulation',{user_id: user._id});
 		can('create','Booking');
 		can('readall','Booking');
 		can('delete','Booking',{user_id: user._id});

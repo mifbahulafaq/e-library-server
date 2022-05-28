@@ -20,7 +20,7 @@ async function store(req,res,next){
         return res.json(category);
 
     }catch(err){
-
+		console.log(err)
         if(err && err.name == 'ValidationError'){
             return res.json({
                 error: 1,
@@ -34,9 +34,19 @@ async function store(req,res,next){
 }
 
 async function index(req,res,next){
+	
+	let {limit= 10, skip= 0} = req.query;
+	let filter = {}
+	
+	if(req.query.q){
+		filter.name = {$regex: `${req.query.q}`, $options: 'i'}
+	}
+	
     try{
 		
-        const category = await Category.find();
+        const category = await Category.find(filter)
+		.skip(parseInt(skip))
+		.limit(parseInt(limit));
         return res.json(category);
 		
     }catch(err){

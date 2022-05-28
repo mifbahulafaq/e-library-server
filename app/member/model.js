@@ -28,7 +28,7 @@ const memberSchema = new Schema({
 		maxlength: [1000, 'The maximum length of address is 1000 characters'],
 		required: [true, 'Enter your address']
     },
-    phone_number: Number,
+    phone_number: String,
     photo: {
 		type: String
 	}

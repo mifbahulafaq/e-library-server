@@ -48,6 +48,7 @@ async function store(req,res,next){
 				
 				let user = new User({
 					_id: operator._id,
+					name: payload.name,
 					email,
 					password,
 					role: 'operator',
@@ -71,6 +72,9 @@ async function store(req,res,next){
 					
 			}
 		}else{
+			
+			delete payload.photo;
+			
 			try{
 				
 				let operator = new Operator(payload);
@@ -184,8 +188,7 @@ async function remove(req,res,next){
 		let operator = await Operator.findOneAndDelete({_id: req.params.id});
 		let user = await User.findOneAndDelete({operator: operator._id});
 		if(operator.photo){
-
-			const currentPhoto = path.resolve(`public/upload/${operator.photo}`);
+			const currentPhoto = path.resolve(config.rootPath,`public/upload/${operator.photo}`);
 			if(fs.existsSync(currentPhoto)) fs.unlinkSync(currentPhoto);
 
 		}
@@ -235,21 +238,29 @@ async function update(req,res,next){
 		let payload = req.body;
 		
         if(req.file){
-                
+			
             try{
-
+				
 				let operator = await Operator.findOne({_id: req.params.id});
-                    
-				const operatorUpdate = await Operator.findOneAndUpdate(
+				
+				let operatorUpdate = await Operator.findOneAndUpdate(
 					{_id: req.params.id},
                     {...payload, photo: req.file.filename},
 					{new: true, runValidators: true}
                  );
-					
+				 
+				const user = await User.findOneAndUpdate(
+					{_id: req.params.id},
+                    {name: payload.name},
+					{new: true, runValidators: true}
+                 )
+				 .select('-password -__v -token');
+				
                 if(operator.photo){
                     const currentPhoto = path.resolve(config.rootPath,`public/upload/${operator.photo}`)
                     if(fs.existsSync(currentPhoto)) fs.unlinkSync(currentPhoto);
 				}
+				
 				return res.json(operatorUpdate);
 
             }catch(err){
@@ -265,13 +276,26 @@ async function update(req,res,next){
                 next(err)
             }
         }else{
+			
+			delete payload.photo;
+			
 			try{
+				
 				let operator = await Operator.findOneAndUpdate(
 					{_id: req.params.id},
 					payload,
 					{new: true, runValidators: true}
 				);
+				
+				let user = await User.findOneAndUpdate(
+					{_id: req.params.id},
+					{name: payload.name},
+					{new: true, runValidators: true}
+				)
+				.select('-password -__v -token');
+				
 				return res.json(operator);
+				
 			}catch(err){
 			
 				if(err && err.name == 'ValidationError'){

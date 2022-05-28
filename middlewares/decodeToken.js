@@ -1,13 +1,13 @@
-const getToken = require('../utils/get-token');
+const getToken = require('../app/utils/get-token');
 const jwt = require('jsonwebtoken');
-const User = require('../user/model');
-const config = require('../config');
+const User = require('../app/user/model');
+const config = require('../app/config');
 
 async function decodeToken(req,res,next){
 	try{
-			
+		
 		const token = getToken(req);
-			
+		
 		if(!token) return next();
 			
 		const user = await User.findOne({token: {$in: [token]}});

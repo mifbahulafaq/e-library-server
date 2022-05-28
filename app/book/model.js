@@ -1,13 +1,15 @@
 const mongoose = require('mongoose');
 const {model, Schema} = mongoose;
+const AutoIncrement = require('mongoose-sequence')(mongoose);
 
 const bookSchema = new Schema({
-    name: {
+    title: {
         type: String,
         minlength: [3, 'The minimum length of name is 3 characters'],
         maxlength: [255, 'The max length of name is 255 character'],
         required: [true, 'The name must be entered']
     },
+    book_id: Number,
     author: {
         type: String,
         minlength: [3, 'The minimum length of author name is 3 characters'],
@@ -34,6 +36,8 @@ const bookSchema = new Schema({
         ref: 'Rack'
     }
 },{ timestamps: true});
+
+bookSchema.plugin(AutoIncrement, {inc_field: 'book_id'});
 
 module.exports = model('Book', bookSchema);
 

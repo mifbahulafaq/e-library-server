@@ -10,25 +10,33 @@ const config = require('../config');
 
 async function register(req,res,next){
 	upload(req,res, async function(err){
+		
 		//handling error uploading
 		if(err instanceof multer.MulterError || err && err.name === "MulterError"){
 			
 			if(err.code === "LIMIT_FILE_SIZE"){
 				return res.json({
 					error: 1,
-					message: err.message,
-					maxSize: config.imageSize
+					  fields: {
+					  photo:{
+						message:err.message,
+					    maxSize: config.imageSize
+					  }
+				    },
+					message: err.message
 				})
 			}
 			
 			return res.json({
 				error: 1,
+				fields: {
+					photo:{message:err.message}
+				},
 				message: err.message
 			})
 		}
 		if(err) return next(err);
 		
-		console.log(req.body)
 		let {email,password,...payload} = req.body;
 		
 		if(req.file){
@@ -39,6 +47,7 @@ async function register(req,res,next){
 						
 				const user = new User({
 					_id: member._id,
+					name: payload.name,
 					email,
 					password,
 					role: 'member',
@@ -49,9 +58,8 @@ async function register(req,res,next){
 				return res.json(member);
 				
 			}catch(err){
-				
 				fs.unlinkSync(req.file.path);
-				if(err && err.name == 'ValidationErorr'){
+				if(err && err.name == 'ValidationError'){
 					return res.json({
 						error: 1,
 						message: err.message,
@@ -63,6 +71,7 @@ async function register(req,res,next){
 		}else{
 			
 			try{
+				delete payload.photo;
 				let member = new Member(payload);
 				await member.save();
 				
@@ -109,6 +118,7 @@ async function index(req,res,next){
 	if(params.q){
 		filter.name = {$regex: `${params.q}`, $options: 'i'}
 	}
+	if(params.member) filter.member_id = params.member;
 
     try{
 		
@@ -194,7 +204,7 @@ async function remove(req,res,next){
 
 async function update(req,res,next){
 	upload(req, res, async function(err){
-	
+		
 		const policy = policyFor(req.user);
 		
 		let member = await Member.findOne({_id: req.params.id});
@@ -238,12 +248,21 @@ async function update(req,res,next){
                     {...payload, photo: req.file.filename},
 					{new: true, runValidators: true}
                  );
-					
+				 
+				 const user = await User.findOneAndUpdate(
+					{_id: req.params.id},
+                    {name: payload.name},
+					{new: true, runValidators: true}
+                 )
+				 .select('-password -__v -token');
+				
                 if(member.photo){
                     const currentPhoto = path.resolve(config.rootPath,`public/upload/${member.photo}`)
                     if(fs.existsSync(currentPhoto)) fs.unlinkSync(currentPhoto);
 				}
+				
 				return res.json(memberUpdate);
+					
 
             }catch(err){
 
@@ -259,12 +278,22 @@ async function update(req,res,next){
             }
         }else{
 			try{
+				
+				delete payload.photo;
 				let member = await Member.findOneAndUpdate(
 					{_id: req.params.id},
 					payload,
 					{new: true, runValidators: true}
 				);
+				let user = await User.findOneAndUpdate(
+					{_id: req.params.id},
+					{name: payload.name},
+					{new: true, runValidators: true}
+				)
+				.select('-password -__v -token');
+				
 				return res.json(member);
+				
 			}catch(err){
 			
 				if(err && err.name == 'ValidationError'){

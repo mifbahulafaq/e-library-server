@@ -1,0 +1,200 @@
+<html>
+  <head>
+    <title>Laporan Peminjaman Buku</title>
+	<style>
+    body {
+	  padding: 50px 100px;
+	  font-family:arial;
+	}
+	h1{
+		text-align:center;
+		line-height:0.7em;
+	}
+	table{
+		width:100%;
+		margin:40px 0px 300px 0px;
+		font-size:0.9em;
+	}
+	table, td {
+		border: solid 1px #737373;
+    }
+	th, td{
+		padding:13px;
+		text-align:left;
+	}
+	th{
+		background-color:#636362;
+		color:#fff;
+		font-weight:bold;
+	}
+	td{
+		color:#363636;
+	}
+	td[rowspan]{
+		font-weight:bold;
+	}
+	td:last-child{
+		width:190px;
+	}
+
+    
+
+    </style>
+  </head>
+  <body>
+	<h1>LAPORAN PEMINJAMAN BUKU</h1>
+	<h1>E-LIBRARY</h1>
+	<%
+	
+		const groupData = groupingData(data,'circulation');
+		let lengthGroups = groupData.length;
+		const devide = 11;
+		let lengthDevide =  Math.ceil(lengthGroups / devide);
+		let devidedDatas = [];
+		let opt1 = { dateStyle:'short', timeStyle:'medium'};
+		let opt2 = { day:"numeric", month:"numeric", year: "numeric"};
+		let opt3 ={ dateStyle:'long'};
+		let opt4 ={ timeStyle:'medium'};
+		let localeEn = 'en-GB';
+		let localeIn = 'id-ID';
+		let coba;
+		let mainData = [];
+		
+		for (let i = 0; i < lengthDevide; i++) {
+		  let firstIndex = i*devide;
+		  let lastIndex = (i+1)*devide;
+		  
+		  devidedDatas.push(groupData.slice(firstIndex,lastIndex));
+		}
+		
+		function idFormatDate(date,locale,opt=""){
+
+			let theDate = new Date(date);
+			return theDate.toLocaleString(locale,opt)
+
+		}
+			
+		function groupingData(data, fieald){
+			return data.reduce((total,cv,ci,arr)=>{
+
+				for(let i = 0; i<total.length; i++){
+							
+					if(total[i][0][fieald]._id === cv[fieald]._id){
+						total[i].push(cv);
+						return total;
+					}
+				}
+				return [...total,[cv]]
+			},[])	
+		}
+		
+		devidedDatas.forEach((devidedData, iDevidedData)=>{
+			let td = '';
+			let table = '';
+			let numberRow = iDevidedData * devide;
+			
+			if(iDevidedData === 0 ){
+		
+				devidedData.forEach((dataArr, iArr)=>{
+					dataArr.forEach((data, iData)=>{
+
+						if(!iData){
+							td += `
+								<tr >
+									<td rowspan=${dataArr.length} >
+										${ iArr+=numberRow+1 }
+									</td>
+									<td rowspan=${ dataArr.length } >
+										${ idFormatDate(data.circulation.date_of_loan,localeIn,opt3) },
+										${ idFormatDate(data.circulation.date_of_loan,localeEn,opt4) }
+									</td>
+									<td rowspan=${ dataArr.length }>${data.circulation.member?.name} (${ data.circulation.member?.member_id })</td>
+									<td rowspan=${ dataArr.length }>${idFormatDate(data.circulation?.date_of_return,localeIn,opt3)}</td>
+									<td>${ data.book?.title }</td>
+									<td>
+										${ data.returned?idFormatDate(data.returned,localeIn,opt3)+',':'' }
+										${ data.returned?idFormatDate(data.returned,localeEn,opt4):'' }
+									</td>
+								</tr>
+							`
+						}else{
+						td += `
+							<tr>
+								<td>${data.book?.title}</td>
+								<td>${data.returned?idFormatDate(data.returned,localeEn,opt1):""}</td>
+							</tr>
+						`
+						}
+					})
+				})
+				
+				table = 
+				` <table cellspacing="0"> 
+					<thead>
+						<tr>
+							<th>No.</th>
+							<th>Tanggal Pinjam</th>
+							<th>Anggota</th>
+							<th>Harus dikembalikan</th>
+							<th>Buku</th>
+							<th>Dikembalikan</th>
+						</tr>
+					</thead>
+					<tbody>
+					${td}
+					</tbody>
+				</table>
+				`
+				mainData.push(table)
+			}else{
+			
+				devidedData.forEach((dataArr, iArr)=>{
+					dataArr.forEach((data, iData)=>{
+						if(!iData){
+							td += `
+								<tr >
+									<td rowspan=${dataArr.length} >
+										${ iArr+=numberRow+1 }
+									</td>
+									<td rowspan=${ dataArr.length } >
+										${ idFormatDate(data.circulation.date_of_loan,localeIn,opt3) },
+										${ idFormatDate(data.circulation.date_of_loan,localeEn,opt4) }
+									</td>
+									<td rowspan=${ dataArr.length }>${data.circulation.member?.name} (${ data.circulation.member?.member_id })</td>
+									<td rowspan=${ dataArr.length }>${idFormatDate(data.circulation?.date_of_return,localeIn,opt3)}</td>
+									<td>${ data.book?.title }</td>
+									<td>
+										${ data.returned?idFormatDate(data.returned,localeIn,opt3)+',':'' }
+										${ data.returned?idFormatDate(data.returned,localeEn,opt4):'' }
+									</td>
+								</tr>
+							`
+						}else{
+						td += `
+							<tr>
+								<td>${data.book?.title}</td>
+								<td>${data.returned?idFormatDate(data.returned,localeEn,opt1):""}</td>
+							</tr>
+						`
+						}
+					})
+				})
+				
+				table = 
+				` 
+				<table cellspacing="0"> 
+					<tbody>
+					${td}
+					</tbody>
+				</table>
+				`
+				mainData.push(table)
+			
+			}
+			
+		})
+
+	%>
+	<%- mainData %>
+  </body>
+</html>

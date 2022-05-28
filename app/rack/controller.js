@@ -29,20 +29,31 @@ async function store(req,res,next){
                 fields: err.errors
             });
         }
-		console.log(err.name)
-        next(err)
+		
+        return next(err)
     }
 
 }
 
 async function index(req,res,next){
+	
+	let {limit= 10, skip= 0} = req.query;
+	let filter = {}
+	
+	if(req.query.q){
+		filter.name = {$regex: `${req.query.q}`, $options: 'i'}
+	}
+	
     try{
 		
-        const rack = await Rack.find();
+        const rack = await Rack.find(filter)
+		.skip(parseInt(skip))
+		.limit(parseInt(limit));
+		
         return res.json(rack);
 		
     }catch(err){
-        next(err)
+        return next(err)
     }
 
 }
@@ -55,7 +66,7 @@ async function singleData(req,res,next){
         return res.json(rack);
 
     }catch(err){
-        next(err);
+        return next(err);
     }
 
 }
@@ -75,7 +86,7 @@ async function remove(req,res,next){
 		let rack = await Rack.findOneAndDelete({_id: req.params.id});
 		return res.json(rack);
 	}catch(error){
-		next(error)
+		return next(error)
 	}
 
 }

@@ -1,0 +1,33 @@
+body {
+  padding: 50px 100px;
+  font-family:arial;
+}
+h1{
+	text-align:center;
+	line-height:0.7em;
+}
+table{
+	width:100%;
+	margin-top:40px;
+	font-size:0.9em;
+	border-collapse: collapse;
+}
+table thead tr{
+	border:1px solid #636362;
+}
+th, td{
+	padding:13px;
+	text-align:left;
+}
+th{
+	background-color:#636362;
+	color:#fff;
+	font-weight:bold;
+}
+td{
+	color:#363636;
+	border:1px solid #000;
+}
+td[rowspan]{
+	font-weight:bold;
+}

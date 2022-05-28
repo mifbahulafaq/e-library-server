@@ -4,6 +4,11 @@ const Member = require('../member/model');
 const Book = require('../book/model');
 const CirculationLog = require('../log-circulation/model');
 const policyFor = require('../policy');
+const { subject } = require('@casl/ability');
+const config = require('../config');
+const pdf = require('html-pdf');
+const fs = require("fs");
+const path = require('path');
 
 async function store(req,res,next){
 	
@@ -18,7 +23,7 @@ async function store(req,res,next){
 			})
 		}
 		
-		const {date_of_return,member,detail} = req.body;
+		let  {date_of_return,member,detail} = req.body;
 		
 		//get total book 
 		let books = detail.reduce((total,cv,ci,arr)=>{
@@ -35,14 +40,16 @@ async function store(req,res,next){
 		
 		const filter = books.map((e,i)=>({
 			_id: e.book,
-			stock: {$gte: e.stock}
+			stock: {$lt: e.stock}
 		}))
 		const result = await Book.find({$or:filter}).select("id");
 		
-		if(books.length !== result.length){
+		if(result.length){
 			return res.json({
 				error: 1,
-				message: "the book you entered, exceeds the existing stock"
+				books: result,
+				//message: "the book you entered, exceeds the existing stock"
+				message: "Stok buku habis"
 			})
 		}
 		
@@ -59,10 +66,14 @@ async function store(req,res,next){
 		)
 		
 		let circulationLog = [];
+		let theDate = new Date();
+		theDate.setHours(0,0,0);
+		theDate.setMilliseconds(86399999);
+		theDate.setDate(theDate.getDate() + Number(date_of_return))
 		
 		let circulation = new Circulation({
 			date_of_loan: new Date(),
-			date_of_return: date_of_return,
+			date_of_return: theDate,
 			member
 		});
 		await circulation.save();
@@ -78,7 +89,7 @@ async function store(req,res,next){
 		
 		detailCirculation.forEach(detail=>{
 			circulationLog.push({
-				status: 'borrowing',
+				status: 'borrowed',
 				user: req.user._id,
 				detail_circulation: detail._id
 			})
@@ -89,7 +100,6 @@ async function store(req,res,next){
 	
 	}catch(err){
 		
-			console.log(err)
 		if(err && err.name == 'ValidationError'){ 
 			return res.json({
 				error: 1,
@@ -98,11 +108,12 @@ async function store(req,res,next){
 			})
 		}
 		
+		next(err)
+		
 	}
 }
 
 async function index(req,res,next){
-	
 	const policy = policyFor(req.user);
 	
 	if(!policy.can('read','Circulation')){
@@ -112,10 +123,23 @@ async function index(req,res,next){
 		})
 	}
 	
-	let {limit= 5, skip= 0} = req.query;
+	let {limit= 5, skip= 0, status, detailId, start_date, end_date} = req.query;
 	let filter = {};
-	
 	let idCirculations = []
+	
+	if (start_date) {
+		
+		let date = new Date(start_date);
+		filter.createdAt =  { $gte :  date}
+	}
+	
+	if (end_date) {
+		
+		let date = new Date(end_date);
+		date.setDate(date.getDate()+1);
+		filter.createdAt =  { ...filter.createdAt, $lt :  date}
+	}
+	
 	if(req.user.role === 'member'){
 		idCirculations = await Circulation
 		.find({member:req.user._id})
@@ -126,33 +150,45 @@ async function index(req,res,next){
 		}
 	}
 	
-	if(req.query.q){
+	if(status) filter.status = {$in: status};
+	if(detailId) filter._id = detailId;
+	//jika waktu sekarang lebih satu hari dari "date_of_return", maka denda 
+	if(req.user.role !== 'member' && req.query.q){
 		
 		const idMembers = await Member
 		.find({name:{$regex:`${req.query.q}`,$options: 'i'}})
 		.select('_id');
 		
 		idCirculations = await Circulation
-		.find({_id:{$in: idCirculations}, member:{$in: idMembers.map(data=>data._id)}})
+		.find({member:{$in: idMembers.map(data=>data._id)}})
 		.select('_id');
 		
-		filter = {
-			circulation: {$in: idCirculations.map(data=>data._id)}
-		}
+		filter.circulation= {$in: idCirculations.map(data=>data._id)}
 	}
 	
     try{
 		
-        const detailCirculation = await DetailCirculation
+        let detailCirculations = await DetailCirculation
 		.find(filter)
 		.skip(parseInt(skip))
 		.limit(parseInt(limit))
-		.populate('circulation');
+		.populate({
+			path: 'circulation',
+			populate: {path: 'member'}
+		})
+		.populate({
+			path: 'book',
+			populate: [ 
+				{path: 'rack'},
+				{path: 'category'}
+			]
+		})
+		.sort('-updatedAt')
 		
 		const count = await DetailCirculation.find(filter).countDocuments();
 		
         return res.json({
-			data: detailCirculation,
+			data: detailCirculations,
 			count
 		});
     }catch(err){
@@ -161,59 +197,59 @@ async function index(req,res,next){
 
 }
 
-async function loans(req,res,next){
-	
-	const policy = policyFor(req.user);
-	
-	if(!policy.can('read','Circulation')){
-		return res.json({
-			error: 1,
-			message: `you're not allowed to perform this action`
-		})
-	}
-	
-	let params = req.query;
-	let {limit= 5, skip= 0} = params;
-	let filter = {status: 'borrowed'};
-	let idCirculations = [];
-	
-	if(req.user.role === 'member'){
-		idCirculations = await Circulation
-		.find({member:req.user._id})
-		.select('_id');
-		
-		filter.circulation= {$in: idCirculations.map(data=>data._id)}
-	}
-	
-	if(req.query.q){
-		
-		const idMembers = await Member
-		.find({name:{$regex:`${req.query.q}`,$options: 'i'}})
-		.select('_id');
-		
-		idCirculations = await Circulation
-		.find({_id:{$in: idCirculations}, member:{$in: idMembers.map(data=>data._id)}})
-		.select('_id');
-		
-		filter.circulation= {$in: idCirculations.map(data=>data._id)}
-	}
-
+async function singleData(req,res,next){
+    
     try{
+	
+		const policy = policyFor(req.user);
 		
-        const detailCirculation = await DetailCirculation
-		.find(filter)
-		.skip(parseInt(skip))
-		.limit(parseInt(limit))
-		.populate('circulation');
+		let detailCirculation = await DetailCirculation
+		.findOne({_id: req.params.id})
+		.populate({
+			path: 'circulation',
+			populate: {path: 'member'}
+		})
 		
-		const count = await DetailCirculation.find(filter).countDocuments();
+		const subjectCirculation = subject('Circulation', {...detailCirculation, user_id: detailCirculation.circulation.member?._id});
 		
-        return res.json({
-			data: detailCirculation,
-			count
-		});
+		if(!policy.can('singleRead',subjectCirculation)){
+			return res.json({
+				error:1,
+				message: `You're not allowed to perform this action`
+			})
+		}
+		
+		//fine
+		const circulation = await Circulation.findOne({
+					_id:detailCirculation.circulation._id,
+					$expr:{$gt:[new Date(),"$date_of_return"]}
+				})
+				
+		if(circulation){
+			
+			const fine = Math.ceil((new Date() - circulation.date_of_return) / config.fineTime) * config.fine;
+			
+			await DetailCirculation
+			.updateOne({_id: req.params.id, status: "borrowed"},{$set: {fine}},{runValidators: true})
+		}
+		//fine end..
+		
+		detailCirculation = await DetailCirculation
+		.findOne({_id: req.params.id})
+		.populate({
+			path: 'circulation',
+			populate: {path: 'member'}
+		})
+		.populate({
+			path: 'book',
+			populate: [{path: 'rack'}, {path: 'category'}]
+		})
+		
+        return res.json(detailCirculation);
+
     }catch(err){
-        next(err)
+		console.log(err)
+        next(err);
     }
 
 }
@@ -261,8 +297,9 @@ async function returned(req,res,next){
 		const circulationLog = new CirculationLog({
 			user: req.user._id,
 			detail_circulation: detailCirculation._id,
-			status:'return'
+			status:'returned'
 		})
+		
 		await circulationLog.save();
         return res.json(detailCirculation);
 
@@ -272,7 +309,7 @@ async function returned(req,res,next){
 
 }
 
-async function fine(req,res,next){
+/*async function fine(req,res,next){
     const policy = policyFor(req.user);
 	
 	if(!policy.can('edit','Circulation')){
@@ -302,7 +339,8 @@ async function fine(req,res,next){
         next(err);
     }
 
-}
+}*/
+
 async function payFine(req,res,next){
     const policy = policyFor(req.user);
 	
@@ -319,12 +357,12 @@ async function payFine(req,res,next){
 		const filter = {_id:req.params.id, status: "borrowed"};
 		
         const detailCirculation = await DetailCirculation
-		.findOneAndUpdate(filter,{$set:{fine_payment}},{new:true,runValidators: true});
+		.findOneAndUpdate(filter,{$set:{fine_payment: Number(fine_payment)}},{new:true,runValidators: true});
 		
 		if(!detailCirculation){
 			return res.json({
 				error: 1,
-				message: "You cannot pay the fine of this loan"
+				message: "You cannot pay the fine of this loan or this loan have returned"
 			})
 		}
         return res.json(detailCirculation);
@@ -335,11 +373,95 @@ async function payFine(req,res,next){
 
 }
 
+async function report(req,res,next){
+	
+	const policy = policyFor(req.user);
+	
+	/*if(!policy.can('read','Circulation')){
+		return res.json({
+			error: 1,
+			message: `you're not allowed to perform this action`
+		})
+	}*/
+	
+	let filter ={};
+	let {start_date, end_date} = req.query;
+	
+	if (start_date) {
+		
+		let date = new Date(start_date);
+		filter.createdAt =  { $gte :  date}
+	}
+	
+	if (end_date) {
+		
+		let date = new Date(end_date);
+		date.setDate(date.getDate()+1);
+		filter.createdAt =  { ...filter.createdAt, $lt :  date}
+	}
+	
+	let idCirculations = []
+	
+	/*if(req.user.role === 'member'){
+		idCirculations = await Circulation
+		.find({member:req.user._id})
+		.select('_id');
+		
+		filter.circulation= {$in: idCirculations.map(data=>data._id)}
+	}*/
+	
+    try{
+		
+        const detailCirculations = await DetailCirculation
+		.find(filter)
+		.populate({
+			path: 'circulation',
+			populate: {path: 'member'}
+		})
+		.populate({
+			path: 'book',
+			populate: {path: 'rack'},
+			populate: {path: 'category'}
+		});
+		
+		const filename = `circulation-${start_date||'~'}-${end_date||'~'}`;
+        const circulationEjs = path.join(__dirname,'../../report-html/pdf/circulation.ejs');
+		//res.render(circulationEjs,{data : detailCirculations});
+		res.render(circulationEjs,{data : detailCirculations},(err,html)=>{
+			
+			if(err) return next(err);
+			
+			const option = {
+					format : 'A4',
+					orientation: "landscape"
+			}
+			pdf.create(html,option).toFile(`./report-pdf/pdf/${filename}.pdf`,(err,path)=>{
+				const options = {
+					headers : {
+						'Content-Disposition': `inline; filename=${filename}.pdf`
+						//ini berpengaruh ketika request melalui url browser
+					}
+				}
+				res.sendFile(path.filename,options,(err)=>{
+					
+					if(err) return next(err);
+					fs.unlinkSync(path.filename);
+				});
+			})
+		})
+		
+    }catch(err){
+        return 	next(err)
+    }
+
+}
+
 module.exports = {
     store,
     index,
-	loans,
 	returned,
-	fine,
-	payFine
+	//fine,
+	payFine,
+	singleData,
+	report
 }

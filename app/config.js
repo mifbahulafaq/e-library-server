@@ -7,6 +7,8 @@ module.exports = {
     rootPath: path.resolve(__dirname,'..'),
 	secretKey: process.env.SECRET_KEY,
 	imageSize: 300000,
+	fine:2000,
+	fineTime:86400000,
 
     //DATABASE
     dbHost: process.env.DB_HOST,

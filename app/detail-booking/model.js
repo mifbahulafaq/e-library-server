@@ -13,7 +13,7 @@ const detailBookingSchema = new Schema({
 		default: 'unprocessed'
     },
     book:{type : Schema.Types.ObjectId, ref : 'Book'}
-});
+},{timestamps:true});
 
 module.exports = model('DetailBooking', detailBookingSchema);
 

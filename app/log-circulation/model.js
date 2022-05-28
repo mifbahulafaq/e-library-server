@@ -13,10 +13,10 @@ const logCirculationSchema = new Schema({
     },
     status: {
         type : String,
-        enum : ['borrowing','return'],
+        enum : ['borrowed','returned'],
         required: [true, "Circulation status must be entered"]
     }
-});
+},{ timestamps: true});
 
 module.exports = model('CirculationLog', logCirculationSchema);
 

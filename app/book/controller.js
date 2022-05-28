@@ -25,14 +25,22 @@ async function store(req,res,next){
 			
 			if(err.code === "LIMIT_FILE_SIZE"){
 				return res.json({
-					error: 1,
-					message: err.message,
-					maxSize: config.imageSize
+					  error: 1,
+					  fields: {
+					    image:{
+						  message:err.message,
+					      maxSize: config.imageSize
+					  }
+				    },
+					message: err.message
 				})
 			}
 			
 			return res.json({
 				error: 1,
+				fields: {
+					image:{message:err.message}
+				},
 				message: err.message
 			})
 		}
@@ -60,6 +68,7 @@ async function store(req,res,next){
             }
         }else{
 			try{
+				delete payload.image
 				let book = new Book(payload);
 				await book.save();
 				return res.json(book);
@@ -81,34 +90,36 @@ async function store(req,res,next){
 
 
 async function index(req,res,next){
-	
 	const policy = policyFor(req.user);
 	
 	if(!policy.can('read','Book')){
 		return res.json({
 			error: 1,
-			message: 'you cannot '
+			message: 'you cannot get this resource'
 		})
 	}
 	
-	let {limit= 5, skip= 0} = req.query;
+	let {limit= 10, skip= 0} = req.query;
 	let filter = {}
 	
 	if(req.query.category){
 		
-		let categoryId = await Category.findOne({name: {$regex: `${req.query.category}`, $options: 'i'}}).select({_id: 1});
-		if(categoryId) filter.category = categoryId;
+		//let categoryId = await Category.findOne({name: {$regex: `${req.query.category}`, $options: 'i'}}).select({_id: 1});
+		//if(categoryId) filter.category = req.query.category;
+		filter.category = req.query.category;
 	}
 	
 	if(req.query.rack){
 		
-		let rackId = await Rack.findOne({name: {$regex: `${req.query.rack}`, $options: 'i'}}).select({_id: 1});
-		if(rackId) filter.rack = rackId;
+		//let rackId = await Rack.findOne({name: {$regex: `${req.query.rack}`, $options: 'i'}}).select({_id: 1});
+		//if(rackId) filter.rack = rackId;
+		filter.rack = req.query.rack;
 	}
 	
 	if(req.query.q){
-		filter.name = {$regex: `${req.query.q}`, $options: 'i'}
+		filter.title = {$regex: `${req.query.q}`, $options: 'i'}
 	}
+	if(req.query.id) filter.book_id = req.query.id;
 
     try{
 		
@@ -126,12 +137,22 @@ async function index(req,res,next){
 			count
 		});
     }catch(err){
+		console.log(err)
         next(err)
     }
 
 }
 
 async function singleData(req,res,next){
+	
+	const policy = policyFor(req.user);
+	
+	if(!policy.can('read','Book')){
+		return res.json({
+			error: 1,
+			message: 'you cannot get this resource'
+		})
+	}
     
     try{
 
@@ -193,14 +214,21 @@ async function update(req,res,next){
 			
 			if(err.code === "LIMIT_FILE_SIZE"){
 				return res.json({
-					error: 1,
-					message: err.message,
-					maxSize: config.imageSize
+					  error: 1,
+					  fields: {
+					    image:{
+						  message:err.message,
+					      maxSize: config.imageSize
+					  }
+				    },
+					message: err.message
 				})
 			}
-			
 			return res.json({
 				error: 1,
+				fields: {
+					image:{message:err.message}
+				},
 				message: err.message
 			})
 		}
@@ -211,18 +239,20 @@ async function update(req,res,next){
         if(req.file){
 			try{	
 				
+				let bookImg = await Book.findOne({_id: req.params.id});
+				
 				const book = await Book.findOneAndUpdate(
 					{_id: req.params.id},
 					{...payload, image: req.file.filename},
 					{new: true, runValidators: true}
 					);
-				return res.json(book);
 
-				let bookImg = await Book.findOne({_id: req.params.id});
 				if(bookImg.image){
 					const currentImage = path.resolve(config.rootPath,`public/upload/${bookImg.image}`)
 					if(fs.existsSync(currentImage)) fs.unlinkSync(currentImage);
 				}
+				
+				return res.json(book);
 				
             }catch(err){
 
@@ -238,6 +268,7 @@ async function update(req,res,next){
             }
         }else{
 			try{
+				delete payload.image
 				let book = await Book.findOneAndUpdate(
 					{_id: req.params.id},
 					payload,

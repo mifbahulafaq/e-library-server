@@ -1,5 +1,7 @@
 const CirculationLog = require('./model');
 const policyFor = require('../policy');
+const Circulation = require('../circulation/model');
+const DetailCirculation = require('../detail-circulation/model');
 const Member = require('../member/model');
 
 async function index(req,res,next){
@@ -17,25 +19,40 @@ async function index(req,res,next){
 		
 		let {skip=0, limit=5} = req.query;
 		
-		/*if(req.query.user){
+		if(req.query.q){
 			
 			const idMembers = await Member
-			.find({name: {$regex: `${req.query.user}`, $options: 'i'}})
+			.find({name:{$regex:`${req.query.q}`,$options: 'i'}})
 			.select('_id');
 			
-			filter.detail_circulation {$regex: `${req.query.user}`, $options: 'i'}};
-		}*/
+			const idCirculations = await Circulation
+			.find({member:{$in: idMembers.map(data=>data._id)}})
+			.select('_id');
+			
+			const detailCirculation = await DetailCirculation
+			.find({circulation:{$in: idCirculations.map(data=>data._id)}})
+			.select('_id');
+			
+			filter.detail_circulation= {$in: detailCirculation.map(data=>data._id)}
+		}
+		
         const circulationLog = await CirculationLog
 		.find(filter)
 		.skip(parseInt(skip))
 		.limit(parseInt(limit))
-		.populate('user','-token -password')
 		.populate({
-			path:'detail_circulation', 
-			populate: "circulation",
-			populate: "book"
+			path:'detail_circulation',
+			populate:[
+				{
+					path:'circulation',
+					populate:'member'
+				},
+				{path:'book'}
+			]
 			
-			})
+		}).
+		populate('user')
+		.sort('-updatedAt')
 		
 		const count = await CirculationLog
 		.find(filter)
@@ -47,6 +64,7 @@ async function index(req,res,next){
 			})
 		
     }catch(err){
+		console.log(err)
         next(err)
     }
 

@@ -9,15 +9,15 @@ async function localStrategy(username, password, done){
 	try{
 		const user = await User
 		.findOne({email: username})
+		.populate('member')
 		.select('-token -__v');
 		
 		if(user){
 			
 			if(bcrypt.compareSync(password, user.password)){
 				
-				({password, ...userWithoutPassword} = user.toJSON());
-				
-				return done(null,userWithoutPassword)
+				({_id, role, ...etc} = user.toJSON());
+				return done(null,{_id, role})
 			}
 			
 		}
@@ -33,7 +33,7 @@ async function localStrategy(username, password, done){
 async function login(req,res,next){
 	
 	passport.authenticate('local', async function(err,user,info){
-		
+		console.log(user)
 		if(err) return next(err);
 		if(!user){
 			
@@ -67,8 +67,7 @@ async function login(req,res,next){
 async function logout(req,res,next){
     try{
 		const token = getToken(req);
-		const user = await User.findOne({token: {$in: [token]}},{$pull:{token}});
-		
+		const user = await User.findOneAndUpdate({token: {$in: [token]}},{$pull:{token}});
 		if(!token || !user){
 			return res.json({
 				error: 1,
